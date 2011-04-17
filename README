@@ -1,0 +1,5 @@
+Metadata server for music files in flac format.
+
+
+The server is using mongodb as datastore. This makes it possible to
+work seamless in python with the datastore.

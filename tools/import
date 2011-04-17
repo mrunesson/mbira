@@ -1,0 +1,227 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+import argparse
+import datetime
+from mutagen.flac import FLAC
+import pymongo
+from pymongo.son_manipulator import AutoReference, NamespaceInjector
+from pymongo.dbref import DBRef
+
+# TODO:
+
+class PossibleGrouping(dict):
+    def __init__(self, tags):
+        self.tags=tags
+
+    def _addTagValueToSet(self, track, tag):
+        if track.has_key(tag):
+            if not self.has_key(tag):
+                self[tag]=set()
+            self[tag]=self[tag].union(track[tag])
+
+    def addInformation(self, track):
+        for tag in self.tags:
+            self._addTagValueToSet(track, tag)
+            
+class musicDB:
+    def __init__(self):
+        connection=pymongo.Connection()
+        self.db=connection['mbira']
+        #self.db.add_son_manipulator(NamespaceInjector())
+        #self.db.add_son_manipulator(AutoReference(self.db))
+        
+    def remove_all(self):
+        self.db.tracks.remove()
+        self.db.albums.remove()
+        self.db.artists.remove()
+
+    def connect_tracks_artist_album(self, tracks=[], artist=None, album=None):
+        if artist is None and album is None:
+            return
+        if artist is not None and not artist.has_key(u'_tracks'):
+            artist[u'_tracks']=[]
+        if album is not None and not album.has_key(u'_tracks'):
+            album[u'_tracks']=[]
+        for t in tracks:
+            if album is not None:
+                t[u'_album']=[DBRef(u'albums',album[u'_id']),]
+                album[u'_tracks'].append(DBRef(u'tracks',t[u'_id']))
+            if artist is not None:
+                t[u'_artist']=[DBRef(u'artists',artist[u'_id']),]
+                artist[u'_tracks'].append(DBRef(u'tracks',t[u'_id']))
+            t[u'_timestamp']=datetime.datetime.utcnow()
+            self.db.tracks.save(t)
+            
+        if artist is not None and album is not None:
+            artist[u'_albums']=[DBRef(u'albums',album[u'_id']),]
+            album[u'_artists']=[DBRef(u'artists',artist[u'_id']),]
+        if artist is not None:
+            artist[u'_timestamp']=datetime.datetime.utcnow()
+            self.db.artists.save(artist)
+        if album is not None:
+            album[u'_timestamp']=datetime.datetime.utcnow()
+            self.db.albums.save(album)
+
+
+    def add_album(self, album_to_add):
+        if album_to_add=={}:
+            return None
+        
+        album={}
+        duplicate=False
+        
+        if album_to_add.has_key(u'musicbrainz_albumid'):
+            # If album has mb_albumid, use it as PK.
+
+            # Does the track already exist, we have a duplicate.
+            album=self.db.albums.find_one(list(album_to_add[u'musicbrainz_albumid'])[0])
+            if album==None:
+                # No, track does not exist.
+                album={}
+                album[u'_id']=list(album_to_add[u'musicbrainz_albumid'])[0]
+            else:
+                duplicate=True
+                
+        # Add the files all tags to the db record.
+        for tag in album_to_add:
+            if album.has_key(tag):
+                album[tag].extend(album_to_add[tag])
+                album[tag]=list(set(album[tag]))
+            else:
+                album[tag]=album_to_add[tag]
+
+        for k in album.keys():
+            if album[k].__class__==set:
+                album[k]=list(album[k])
+        album[u'_timestamp']=datetime.datetime.utcnow()
+        id=self.db.albums.save(album)
+        album[u'_id']=id
+        return album
+
+    def add_artist(self, artist_to_add):
+        if artist_to_add=={}:
+            return None
+        if artist_to_add.has_key(u'artist') and len(artist_to_add[u'artist'])>1:
+            # Not one artist.
+            return None
+        artist={}
+        duplicate=False
+        
+        if artist_to_add.has_key(u'musicbrainz_artistid'):
+            # If album has mb_albumid, use it as PK.
+
+            # Does the track already exist, we have a duplicate.
+            artist=self.db.artists.find_one(list(artist_to_add[u'musicbrainz_artistid'])[0])
+            if artist==None:
+                # No, track does not exist.
+                artist={}
+                artist[u'_id']=list(artist_to_add[u'musicbrainz_artistid'])[0]
+            else:
+                duplicate=True
+        else:
+            artist=self.db.artists.find_one({u'artist': list(artist_to_add[u'artist'])})
+            if artist==None:
+                # No, track does not exist.
+                artist={}
+            else:
+                duplicate=True
+                if artist.has_key(u'_guessed'):
+                    artist[u'_guessed'].append("The same artist")
+                else:
+                    artist[u'_guessed']=["The same artist"]
+                
+        # Add the files all tags to the db record.
+        for tag in artist_to_add:
+            if artist.has_key(tag):
+                artist[tag].extend(artist_to_add[tag])
+                artist[tag]=list(set(artist[tag]))
+            else:
+                artist[tag]=artist_to_add[tag]
+
+        for k in artist.keys():
+            if artist[k].__class__==set:
+                artist[k]=list(artist[k])
+        artist[u'_timestamp']=datetime.datetime.utcnow()
+        id=self.db.artists.save(artist)
+        artist[u'_id']=id
+        return artist
+
+
+
+    def add_track(self, flac):
+        track={}
+        duplicate=False
+        
+        if flac.has_key(u'musicbrainz_trackid'):
+            # If track has mb_trackid, use it as PK.
+
+            # Does the track already exist, we have a duplicate.
+            track=self.db.tracks.find_one(flac[u'musicbrainz_trackid'][0])
+            if track==None:
+                # No, track does not exist.
+                track={}
+                track[u'_id']=flac[u'musicbrainz_trackid'][0]
+            else:
+                duplicate=True
+                
+        # Add the files all tags to the db record.
+        for tag in flac:
+            tag=tag.lower()
+            if track.has_key(tag):
+                track[tag].extend(flac[tag])
+                track[tag]=list(set(track[tag]))
+            else:
+                track[tag]=flac[tag]
+
+        track[u'_timestamp']=os.stat(flac.filename).st_mtime
+        track[u'_mime']=u'audio/flac'
+        if duplicate:
+            track[u'_file'].append(flac.filename)
+        else:
+            track[u'_file']=[flac.filename,]
+        id=self.db.tracks.save(track)
+        track[u'_id']=id
+        return track
+
+
+def main(argv):
+    parser=argparse.ArgumentParser()
+    parser.add_argument('SRCDIR', help='Flac files.')
+    args=parser.parse_args(argv[1:])
+
+    db=musicDB()
+    db.remove_all()
+
+    for root, dirs, files in os.walk(args.SRCDIR):
+        if len(root)>0 and (root[0]=='.' or root.find("/.")!=-1):
+            continue
+        possibleAlbum=PossibleGrouping([u'artist', u'album', u'musicbrainz_albumid',
+                    u'asin', u'albumsort', u'date', u'discid',
+                    u'discnumber', u'disctotal', u'musicbrainz_albumartistid',
+                    u'musicbrainz_artistid', u'musicbrainz_discid',
+                    u'replaygain_album_gain', u'replaygain_album_peak',
+                    u'totaltracks', u'tracktotal', u'year'])
+        possibleArtist=PossibleGrouping([u'artist', u'artistsort',
+                                       u'musicbrainz_albumartistid',
+                                       u'musicbrainz_artistid'])
+        tracks=[]
+	for name in files:
+            srcFile=os.path.join(root, name)
+            print srcFile
+	    try:
+                flac=FLAC(srcFile)
+            except:
+                # Not a flac file, skip!
+                continue
+            tracks.append(db.add_track(flac))
+            possibleAlbum.addInformation(flac)
+            possibleArtist.addInformation(flac)
+        album=db.add_album(possibleAlbum)
+        artist=db.add_artist(possibleArtist)
+        db.connect_tracks_artist_album(tracks, artist, album)
+        
+if __name__ == "__main__":
+    main(sys.argv)
