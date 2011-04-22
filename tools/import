@@ -28,10 +28,14 @@ class PossibleGrouping(dict):
             
 class musicDB:
     def __init__(self):
-        connection=pymongo.Connection()
-        self.db=connection['mbira']
-        #self.db.add_son_manipulator(NamespaceInjector())
-        #self.db.add_son_manipulator(AutoReference(self.db))
+        try:
+            connection=pymongo.Connection()
+            self.db=connection['mbira']
+            #self.db.add_son_manipulator(NamespaceInjector())
+            #self.db.add_son_manipulator(AutoReference(self.db))
+        except pymongo.errors.AutoReconnect:
+            print("Cannot connect to local mongodb.")
+            exit(1)
         
     def remove_all(self):
         self.db.tracks.remove()
