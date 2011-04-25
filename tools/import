@@ -193,11 +193,15 @@ class musicDB:
 
 def main(argv):
     parser=argparse.ArgumentParser()
+    parser.add_argument('-r', '--remove', action='store_true',
+                        help='Delete existing data in database.')
+
     parser.add_argument('SRCDIR', help='Flac files.')
     args=parser.parse_args(argv[1:])
 
     db=musicDB()
-    db.remove_all()
+    if args.remove:
+        db.remove_all()
 
     for root, dirs, files in os.walk(args.SRCDIR):
         if len(root)>0 and (root[0]=='.' or root.find("/.")!=-1):
