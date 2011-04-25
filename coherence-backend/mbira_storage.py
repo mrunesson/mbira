@@ -9,6 +9,11 @@ import os
 
 TRACK_MIMETYPE = "audio/flac"
 
+def getDB():
+    connection=pymongo.Connection()
+    return connection['mbira']
+    
+
 class TrackItem(BackendItem):
     logCategory = "mbira"
 
@@ -51,8 +56,14 @@ class ArtistContainer(Container):
         Container.__init__(self, parent, artist[u'artist'][0])
         self.artist=artist
         
-
     def populate_albums_for_artist(self):
+        db=getDB()
+        albums=self.artist['_albums']
+        for dbref in albums:
+            external_id = dbref.id.__str__()
+            album = db[dbref.collection].find_one({u'_id': dbref.id})
+            item = AlbumContainer(self, album)
+            self.add_child(item, external_id = external_id)
         pass
 
 
@@ -89,8 +100,7 @@ class MbiraStore(AbstractBackendStore):
                 'SystemUpdateID', self.update_id)
 
     def init_data(self):
-        connection=pymongo.Connection()
-        self.db=connection['mbira']
+        self.db=getDB()
         self.init_container_structure()
         self.init_all_tracks()
         self.init_all_artists()
@@ -111,6 +121,7 @@ class MbiraStore(AbstractBackendStore):
             item = ArtistContainer(self.get_root_item(), a)
             external_id = a[u'_id']
             self.artistsContainer.add_child(item, external_id = external_id)
+            item.populate_albums_for_artist()
 
     def init_all_albums(self):
         albums=self.db.albums.find()
@@ -118,7 +129,6 @@ class MbiraStore(AbstractBackendStore):
             item = AlbumContainer(self.get_root_item(), a)
             external_id = a[u'_id']
             self.albumsContainer.add_child(item, external_id = external_id)
-
 
     def init_container_structure(self):
         self.name = "Mbira"
