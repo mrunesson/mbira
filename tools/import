@@ -10,8 +10,6 @@ import pymongo
 from pymongo.son_manipulator import AutoReference, NamespaceInjector
 from pymongo.dbref import DBRef
 
-# TODO:
-
 class PossibleGrouping(dict):
     def __init__(self, tags):
         self.tags=tags
@@ -31,8 +29,6 @@ class musicDB:
         try:
             connection=pymongo.Connection()
             self.db=connection['mbira']
-            #self.db.add_son_manipulator(NamespaceInjector())
-            #self.db.add_son_manipulator(AutoReference(self.db))
         except pymongo.errors.AutoReconnect:
             print("Cannot connect to local mongodb.")
             exit(1)
@@ -115,12 +111,12 @@ class musicDB:
         duplicate=False
         
         if artist_to_add.has_key(u'musicbrainz_artistid'):
-            # If album has mb_albumid, use it as PK.
+            # If artist has mb_albumid, use it as PK.
 
-            # Does the track already exist, we have a duplicate.
+            # Does the artist already exist, we have a duplicate.
             artist=self.db.artists.find_one(list(artist_to_add[u'musicbrainz_artistid'])[0])
             if artist==None:
-                # No, track does not exist.
+                # No, artist does not exist.
                 artist={}
                 artist[u'_id']=list(artist_to_add[u'musicbrainz_artistid'])[0]
             else:
@@ -128,7 +124,7 @@ class musicDB:
         else:
             artist=self.db.artists.find_one({u'artist': list(artist_to_add[u'artist'])})
             if artist==None:
-                # No, track does not exist.
+                # No, artist does not exist.
                 artist={}
             else:
                 duplicate=True
@@ -206,20 +202,21 @@ def main(argv):
     for root, dirs, files in os.walk(args.SRCDIR):
         if len(root)>0 and (root[0]=='.' or root.find("/.")!=-1):
             continue
+        
         possibleAlbum=PossibleGrouping([u'artist', u'album', u'musicbrainz_albumid',
-                    u'asin', u'albumsort', u'date', u'discid',
-                    u'discnumber', u'disctotal', u'musicbrainz_albumartistid',
-                    u'musicbrainz_artistid', u'musicbrainz_discid',
-                    u'replaygain_album_gain', u'replaygain_album_peak',
-                    u'totaltracks', u'tracktotal', u'year'])
+                                        u'asin', u'albumsort', u'date', u'discid',
+                                        u'discnumber', u'disctotal', u'musicbrainz_albumartistid',
+                                        u'musicbrainz_artistid', u'musicbrainz_discid',
+                                        u'replaygain_album_gain', u'replaygain_album_peak',
+                                        u'totaltracks', u'tracktotal', u'year'])
         possibleArtist=PossibleGrouping([u'artist', u'artistsort',
-                                       u'musicbrainz_albumartistid',
-                                       u'musicbrainz_artistid'])
+                                         u'musicbrainz_albumartistid',
+                                         u'musicbrainz_artistid'])
         tracks=[]
-	for name in files:
+        for name in files:
             srcFile=os.path.join(root, name)
             print srcFile
-	    try:
+            try:
                 flac=FLAC(srcFile)
             except:
                 # Not a flac file, skip!
