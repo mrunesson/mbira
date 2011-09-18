@@ -1,5 +1,9 @@
-Metadata server for music files in flac format.
-
+Metadata server,compatible with coherence, for music files in flac format.
 
 The server is using mongodb as datastore. This makes it possible to
 work seamless in python with the datastore.
+
+mutagen is used by the import tool. 
+
+
+Don't forget to add an entry for mbira to Coherence.egg-info/entry_points.txt
